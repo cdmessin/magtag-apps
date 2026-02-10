@@ -1,6 +1,7 @@
 import ipaddress
 import os
 import ssl
+import time
 import wifi
 import socketpool
 import adafruit_requests
@@ -9,6 +10,19 @@ import displayio
 import terminalio
 from adafruit_display_text import label
 
+# Disable the terminal from showing on the display
+# This lets print() go to serial only
+display = board.DISPLAY
+display.auto_refresh = False
+group = displayio.Group()
+
+# Create a white background
+background_bitmap = displayio.Bitmap(display.width, display.height, 1)
+background_palette = displayio.Palette(1)
+background_palette[0] = 0xFFFFFF  # White
+background_sprite = displayio.TileGrid(background_bitmap, pixel_shader=background_palette, x=0, y=0)
+group.append(background_sprite)
+display.root_group = group
 
 # Get our username, key and desired timezone
 ssid = os.getenv("CIRCUITPY_WIFI_SSID")
@@ -34,17 +48,7 @@ wifi.radio.connect(ssid, password)
 print(f"Connected to {ssid}!")
 print("My IP address is", wifi.radio.ipv4_address)
 
-# Display IP address on the e-ink screen
-display = board.DISPLAY
-
-# Create a white background to clear the screen
-group = displayio.Group()
-background_bitmap = displayio.Bitmap(display.width, display.height, 1)
-background_palette = displayio.Palette(1)
-background_palette[0] = 0xFFFFFF  # White
-background_sprite = displayio.TileGrid(background_bitmap, pixel_shader=background_palette, x=0, y=0)
-group.append(background_sprite)
-
+# Add IP address to display and refresh
 ip_text = label.Label(
     terminalio.FONT,
     text=f"IP: {wifi.radio.ipv4_address}",
@@ -54,7 +58,8 @@ ip_text = label.Label(
     scale=2
 )
 group.append(ip_text)
-display.root_group = group
+time.sleep(display.time_to_refresh)
+display.refresh()
 
 ipv4 = ipaddress.ip_address("8.8.4.4")
 print("Ping google.com:", wifi.radio.ping(ipv4), "ms")
