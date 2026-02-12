@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "title": "Water plants",
+      "due_date": "2026-02-14",
+      "last_completed": "2026-02-07"
+    },
+    {
+      "title": "Take vitamins",
+      "due_date": "2026-02-12",
+      "last_completed": "2026-02-11"
+    },
+    {
+      "title": "Clean filter",
+      "due_date": "2026-02-28",
+      "last_completed": "2026-01-28"
+    }
+  ]
+}

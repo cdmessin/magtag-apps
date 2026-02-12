@@ -1,3 +1,4 @@
+import json
 import os
 import ssl
 import time
@@ -25,11 +26,11 @@ bg_palette[0] = 0xFFFFFF
 main_group.append(displayio.TileGrid(bg_bitmap, pixel_shader=bg_palette, x=0, y=0))
 
 # The e-ink controller RAM is larger than the physical panel. With colstart=0
-# in the board definition, the top ~3 pixels of RAM fall outside the visible
-# area. Shift all content down to compensate. The bottom ~3 rows similarly
+# in the board definition, the top ~5 pixels of RAM fall outside the visible
+# area. Shift all content down to compensate. The bottom ~5 rows similarly
 # show noise from uninitialized RAM, so we treat them as unusable too.
-DISPLAY_Y_OFFSET = 3
-USABLE_HEIGHT = display.height - DISPLAY_Y_OFFSET - 3  # ~122 usable rows
+DISPLAY_Y_OFFSET =5
+USABLE_HEIGHT = display.height - DISPLAY_Y_OFFSET - 5  # ~120 usable rows
 
 content_group = displayio.Group(y=DISPLAY_Y_OFFSET)
 main_group.append(content_group)
@@ -43,15 +44,53 @@ CONTENT_HEIGHT = USABLE_HEIGHT - CONTENT_TOP
 BLOCK_WIDTH = display.width // 4  # 4 equal vertical columns
 BLOCK_HEIGHT = CONTENT_HEIGHT
 
-# --- Read battery voltage ---
+# --- Local data file (persistent state) ---
+DATA_PATH = "/data.json"
+
+def db_read():
+    try:
+        with open(DATA_PATH, "r") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"items": []}
+
+def db_write(data):
+    with open(DATA_PATH, "w") as f:
+        json.dump(data, f)
+
+# --- Read battery voltage & compute percentage ---
 # MagTag battery voltage divider is on board.VOLTAGE_MONITOR
+# 3.7V 420mAh LiPo: 4.2V = 100%, 3.0V = 0%
+# Piecewise linear approximation of the typical LiPo discharge curve.
+LIPO_CURVE = [
+    (4.20, 100), (4.15, 95), (4.10, 90), (4.05, 85),
+    (4.00, 80),  (3.90, 70), (3.80, 60), (3.70, 50),
+    (3.60, 40),  (3.50, 30), (3.40, 20), (3.30, 10),
+    (3.20, 5),   (3.00, 0),
+]
+
+def voltage_to_percent(voltage):
+    if voltage >= LIPO_CURVE[0][0]:
+        return 100
+    if voltage <= LIPO_CURVE[-1][0]:
+        return 0
+    for i in range(len(LIPO_CURVE) - 1):
+        v_high, p_high = LIPO_CURVE[i]
+        v_low, p_low = LIPO_CURVE[i + 1]
+        if voltage >= v_low:
+            # Linear interpolation between the two points
+            return p_low + (p_high - p_low) * (voltage - v_low) / (v_high - v_low)
+    return 0
+
 try:
     vbat_voltage_pin = analogio.AnalogIn(board.VOLTAGE_MONITOR)
     # Voltage divider halves the voltage; reference is 3.3V over 16-bit range
     battery_voltage = (vbat_voltage_pin.value / 65535.0) * 3.3 * 2
     vbat_voltage_pin.deinit()
+    battery_percent = voltage_to_percent(battery_voltage)
 except Exception:
     battery_voltage = 0.0
+    battery_percent = 0
 
 # --- Connect to WiFi & fetch time ---
 ssid = os.getenv("CIRCUITPY_WIFI_SSID")
@@ -89,7 +128,7 @@ status_time_label = label.Label(
 )
 content_group.append(status_time_label)
 
-battery_text = f"{battery_voltage:.2f}V"
+battery_text = f"{battery_percent:.0f}%"
 battery_label = label.Label(
     terminalio.FONT,
     text=battery_text,
@@ -129,15 +168,16 @@ for i, block_text in enumerate(block_labels):
 time.sleep(display.time_to_refresh)
 display.refresh()
 
-# --- Check for REPL escape hatch ---
-# Hold button A (D15) during startup to skip deep sleep and stay in REPL.
-# This gives you USB access for development/debugging.
+# --- Dev mode escape hatch ---
+# In dev mode, Button A is held during reset. boot.py keeps USB writable
+# for the host, and this check skips deep sleep so we drop into REPL.
+# See boot.py for the full boot mode description.
 btn_a = digitalio.DigitalInOut(board.D15)
 btn_a.direction = digitalio.Direction.INPUT
 btn_a.pull = digitalio.Pull.UP
-if not btn_a.value:  # Button A is held (active low)
+if not btn_a.value:  # Button A held (active low) — dev mode
     btn_a.deinit()
-    print("Button A held — skipping deep sleep. Dropping into REPL.")
+    print("Dev mode — skipping deep sleep. USB writable, REPL active.")
 else:
     btn_a.deinit()
 
