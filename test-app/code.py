@@ -10,10 +10,10 @@ import displayio
 import terminalio
 from adafruit_display_text import label
 
-# Disable the terminal from showing on the display
-# This lets print() go to serial only
+# Take over the display immediately before any print statements
+# Setting root_group to our own group prevents terminal output on display
+# The status bar (if enabled) will still show at the top
 display = board.DISPLAY
-display.auto_refresh = False
 group = displayio.Group()
 
 # Create a white background
