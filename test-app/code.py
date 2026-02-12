@@ -23,13 +23,23 @@ bg_bitmap = displayio.Bitmap(display.width, display.height, 1)
 bg_palette = displayio.Palette(1)
 bg_palette[0] = 0xFFFFFF
 main_group.append(displayio.TileGrid(bg_bitmap, pixel_shader=bg_palette, x=0, y=0))
+
+# The e-ink controller RAM is larger than the physical panel. With colstart=0
+# in the board definition, the top ~3 pixels of RAM fall outside the visible
+# area. Shift all content down to compensate. The bottom ~3 rows similarly
+# show noise from uninitialized RAM, so we treat them as unusable too.
+DISPLAY_Y_OFFSET = 3
+USABLE_HEIGHT = display.height - DISPLAY_Y_OFFSET - 3  # ~122 usable rows
+
+content_group = displayio.Group(y=DISPLAY_Y_OFFSET)
+main_group.append(content_group)
 display.root_group = main_group
 
 # --- Layout constants ---
-# Display is 296 x 128
-STATUS_BAR_HEIGHT = 16  # thin bar at the very top
-CONTENT_TOP = STATUS_BAR_HEIGHT + 2  # leave a 2px gap after status bar
-CONTENT_HEIGHT = display.height - CONTENT_TOP
+# Physical display is 296 x 128, usable area is ~296 x 122 after offsets.
+STATUS_BAR_HEIGHT = 14
+CONTENT_TOP = STATUS_BAR_HEIGHT + 2  # 2px gap after status bar
+CONTENT_HEIGHT = USABLE_HEIGHT - CONTENT_TOP
 BLOCK_WIDTH = display.width // 4  # 4 equal vertical columns
 BLOCK_HEIGHT = CONTENT_HEIGHT
 
@@ -77,7 +87,7 @@ status_time_label = label.Label(
     anchored_position=(2, STATUS_BAR_HEIGHT // 2),
     scale=1,
 )
-main_group.append(status_time_label)
+content_group.append(status_time_label)
 
 battery_text = f"{battery_voltage:.2f}V"
 battery_label = label.Label(
@@ -88,19 +98,21 @@ battery_label = label.Label(
     anchored_position=(display.width - 2, STATUS_BAR_HEIGHT // 2),
     scale=1,
 )
-main_group.append(battery_label)
+content_group.append(battery_label)
 
 # Horizontal separator below status bar
-main_group.append(Line(0, STATUS_BAR_HEIGHT, display.width - 1, STATUS_BAR_HEIGHT, 0x000000))
+content_group.append(Line(0, STATUS_BAR_HEIGHT, display.width - 1, STATUS_BAR_HEIGHT, 0x000000))
 
 # ── Four content columns with placeholder text ──
-block_labels = ["Block 1", "Block 2", "Block 3", "Block 4"]
+# Each column is 74px wide. terminalio.FONT is 6px/char, so at scale=2
+# only ~6 chars fit per column (74 / 12 = 6.1). Use short labels.
+block_labels = ["Blk 1", "Blk 2", "Blk 3", "Blk 4"]
 for i, block_text in enumerate(block_labels):
     block_x = i * BLOCK_WIDTH
 
     # Vertical separator line between columns (skip the first — left edge)
     if i > 0:
-        main_group.append(Line(block_x, CONTENT_TOP, block_x, display.height - 1, 0x999999))
+        content_group.append(Line(block_x, CONTENT_TOP, block_x, USABLE_HEIGHT - 1, 0x999999))
 
     # Centered placeholder label in each column
     placeholder = label.Label(
@@ -111,7 +123,7 @@ for i, block_text in enumerate(block_labels):
         anchored_position=(block_x + BLOCK_WIDTH // 2, CONTENT_TOP + BLOCK_HEIGHT // 2),
         scale=2,
     )
-    main_group.append(placeholder)
+    content_group.append(placeholder)
 
 # ── Refresh the e-ink display ──
 time.sleep(display.time_to_refresh)
