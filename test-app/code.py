@@ -145,7 +145,7 @@ content_group.append(Line(0, STATUS_BAR_HEIGHT, display.width - 1, STATUS_BAR_HE
 # ── Four content columns with placeholder text ──
 # Each column is 74px wide. terminalio.FONT is 6px/char, so at scale=2
 # only ~6 chars fit per column (74 / 12 = 6.1). Use short labels.
-block_labels = ["Blk 1", "Blk 2", "Blk 3", "Blk 4"]
+block_labels = ["Blk 1", "Blk 2", "Blk 3", "Blk 5"]
 for i, block_text in enumerate(block_labels):
     block_x = i * BLOCK_WIDTH
 
