@@ -2,6 +2,7 @@ import ipaddress
 import os
 import ssl
 import time
+import alarm
 import wifi
 import socketpool
 import adafruit_requests
@@ -72,3 +73,12 @@ response = requests.get(TIME_URL)
 print("-" * 40)
 print(response.text)
 print("-" * 40)
+
+# Enter deep sleep to save battery
+# The e-ink display will retain the image without power
+# Wake up after 60 seconds (adjust as needed), or press button D15 to wake
+time_alarm = alarm.time.TimeAlarm(monotonic_time=time.monotonic() + 60)
+button_alarm = alarm.pin.PinAlarm(pin=board.D15, value=False, pull=True)  # Button A on MagTag
+
+print("Entering deep sleep...")
+alarm.exit_and_deep_sleep_until_alarms(time_alarm, button_alarm)
