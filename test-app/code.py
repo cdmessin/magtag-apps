@@ -27,11 +27,11 @@ display.root_group = main_group
 
 # --- Layout constants ---
 # Display is 296 x 128
-STATUS_BAR_HEIGHT = 14  # thin bar at the very top
+STATUS_BAR_HEIGHT = 16  # thin bar at the very top
 CONTENT_TOP = STATUS_BAR_HEIGHT + 2  # leave a 2px gap after status bar
 CONTENT_HEIGHT = display.height - CONTENT_TOP
-BLOCK_HEIGHT = CONTENT_HEIGHT // 4  # 4 equal vertical blocks
-BLOCK_WIDTH = display.width
+BLOCK_WIDTH = display.width // 4  # 4 equal vertical columns
+BLOCK_HEIGHT = CONTENT_HEIGHT
 
 # --- Read battery voltage ---
 # MagTag battery voltage divider is on board.VOLTAGE_MONITOR
@@ -73,8 +73,8 @@ status_time_label = label.Label(
     terminalio.FONT,
     text=f"Refreshed: {current_time}",
     color=0x000000,
-    x=2,
-    y=STATUS_BAR_HEIGHT // 2,
+    anchor_point=(0.0, 0.5),
+    anchored_position=(2, STATUS_BAR_HEIGHT // 2),
     scale=1,
 )
 main_group.append(status_time_label)
@@ -93,22 +93,22 @@ main_group.append(battery_label)
 # Horizontal separator below status bar
 main_group.append(Line(0, STATUS_BAR_HEIGHT, display.width - 1, STATUS_BAR_HEIGHT, 0x000000))
 
-# ── Four content blocks with placeholder text ──
+# ── Four content columns with placeholder text ──
 block_labels = ["Block 1", "Block 2", "Block 3", "Block 4"]
 for i, block_text in enumerate(block_labels):
-    block_y = CONTENT_TOP + i * BLOCK_HEIGHT
+    block_x = i * BLOCK_WIDTH
 
-    # Separator line between blocks (skip the first — the status bar line covers it)
+    # Vertical separator line between columns (skip the first — left edge)
     if i > 0:
-        main_group.append(Line(0, block_y, display.width - 1, block_y, 0x999999))
+        main_group.append(Line(block_x, CONTENT_TOP, block_x, display.height - 1, 0x999999))
 
-    # Centered placeholder label in each block
+    # Centered placeholder label in each column
     placeholder = label.Label(
         terminalio.FONT,
         text=block_text,
         color=0x000000,
         anchor_point=(0.5, 0.5),
-        anchored_position=(display.width // 2, block_y + BLOCK_HEIGHT // 2),
+        anchored_position=(block_x + BLOCK_WIDTH // 2, CONTENT_TOP + BLOCK_HEIGHT // 2),
         scale=2,
     )
     main_group.append(placeholder)
