@@ -44,3 +44,13 @@ The e-ink display is 296x128 pixels but the controller RAM is larger than the ph
 Button A (D15) controls boot behavior (see `boot.py` comments for full description):
 - **Normal** (button not held): filesystem is writable by code, USB drive is read-only to host. App runs and enters deep sleep.
 - **Dev mode** (hold Button A during reset): USB drive stays writable for host (drag-and-drop editing). Code.py skips deep sleep and drops into REPL.
+
+#### OTA Code Updates
+
+On hard boot (power-on or reset button), `boot.py` can automatically fetch the latest `code.py` from a raw GitHub URL before `code.py` executes. Deep sleep wakes skip OTA entirely for speed and battery life. The discriminator is `alarm.wake_alarm` — `None` on hard boot, set to the triggering alarm on deep sleep wake.
+
+OTA is configured via `settings.toml` on the device (not tracked in repo):
+- `OTA_URL` — raw GitHub URL to `code.py` (e.g. `https://raw.githubusercontent.com/<user>/<repo>/main/test-app/code.py`). If missing, OTA is skipped.
+- `OTA_TOKEN` — GitHub Personal Access Token for private repos. Leave empty or omit for public repos.
+
+All OTA failures (no WiFi, HTTP errors, empty responses, write errors) are caught silently — the existing `code.py` always runs. `boot.py` itself is never updated OTA to prevent self-bricking.
