@@ -222,18 +222,15 @@ content_group.append(Line(0, STATUS_BAR_HEIGHT, display.width - 1, STATUS_BAR_HE
 # Get data for each
 data = db_read()
 items = data.get("items", [])
-items.sort(key=lambda x: x.get("due_date", 0), reverse=True)  # Newest first
+items.sort(key=lambda x: x.get("due_date", ""), reverse=True)  # Newest first
 
-
-
-
-displayed_items = items[:4]  # Show up to 4 items
-
+# Extract titles for display, pad to 4 items
+displayed_titles = [item.get("title", "") for item in items[:4]]
+displayed_titles += [""] * (4 - len(displayed_titles))
 
 # Each column is 74px wide. terminalio.FONT is 6px/char, so at scale=1
 # only ~12 chars fit per column (74 / 6 = 12.3).
-block_labels = displayed_items + [""] * (4 - len(displayed_items))  # Pad to 4 items if needed
-for i, block_text in enumerate(block_labels):
+for i, title in enumerate(displayed_titles):
     block_x = i * BLOCK_WIDTH
 
     # Vertical separator line between columns (skip the first — left edge)
@@ -243,7 +240,7 @@ for i, block_text in enumerate(block_labels):
     # Label at top of block centered horizontally
     placeholder = label.Label(
         terminalio.FONT,
-        text=block_text,
+        text=title,
         color=0x000000,
         anchor_point=(0.5, 0.5),
         anchored_position=(block_x + BLOCK_WIDTH // 2, CONTENT_TOP + 6),
