@@ -154,7 +154,7 @@ GRAPHQL_QUERY = (
 )
 
 total_invited = 0
-attending_count = 0
+rsvped_count = 0
 last_rsvp_name = "N/A"
 last_rsvp_date = ""
 api_error = False
@@ -175,12 +175,11 @@ try:
         if not guest.get("isVendor", False):
             total_invited += guest.get("guestCount", 0)
 
-    # Parse RSVPs for attending count and most recent RSVP
+    # Parse RSVPs for total RSVPed count and most recent RSVP
     rsvps = data.get("data", {}).get("listRSVPS", {}).get("items", [])
     latest_rsvp = None
     for rsvp in rsvps:
-        if rsvp.get("attending", False):
-            attending_count += rsvp.get("numberOfGuests", 0)
+        rsvped_count += rsvp.get("numberOfGuests", 0)
         # Track most recent RSVP by createdAt (ISO 8601 sorts lexically)
         created = rsvp.get("createdAt", "")
         if latest_rsvp is None or created > latest_rsvp.get("createdAt", ""):
@@ -206,7 +205,7 @@ try:
                     hi -= 12
                 last_rsvp_date += f" {hi}:{mi_t:02d} {ampm} ET"
 
-    print(f"Attending: {attending_count}/{total_invited}")
+    print(f"RSVPed: {rsvped_count}/{total_invited}")
     print(f"Last RSVP: {last_rsvp_name} on {last_rsvp_date}")
 except Exception as e:
     print(f"API error: {e}")
@@ -242,7 +241,7 @@ content_group.append(
 )
 
 # ── Main content: RSVP count (large) ──
-count_text = f"{attending_count} / {total_invited}"
+count_text = f"{rsvped_count} / {total_invited}"
 count_label = label.Label(
     terminalio.FONT,
     text=count_text,
@@ -256,7 +255,7 @@ content_group.append(count_label)
 # Subtitle below the count
 subtitle_label = label.Label(
     terminalio.FONT,
-    text="guests attending",
+    text="guests RSVPed",
     color=0x000000,
     anchor_point=(0.5, 0.0),
     anchored_position=(display.width // 2, CONTENT_TOP + 42),
