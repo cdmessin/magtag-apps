@@ -79,7 +79,7 @@ timezone = os.getenv("TIMEZONE")
 TIME_URL = (
     f"https://io.adafruit.com/api/v2/{aio_username}/integrations/time/strftime"
     f"?x-aio-key={aio_key}&tz={timezone}"
-    "&fmt=%25b+%25e,+%25l%25M+%25p"
+    "&fmt=%25b+%25e,+%25l:%25M+%25p"
 )
 
 print("Connecting to", ssid)

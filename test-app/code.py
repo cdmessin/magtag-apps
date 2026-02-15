@@ -228,6 +228,11 @@ TIME_URL = (
     f"?x-aio-key={aio_key}&tz={timezone}"
     "&fmt=%25Y-%25m-%25d+%25H%3A%25M%3A%25S"
 )
+TIME_URL_READABLE = (
+    f"https://io.adafruit.com/api/v2/{aio_username}/integrations/time/strftime"
+    f"?x-aio-key={aio_key}&tz={timezone}"
+    "&fmt=%25b+%25e,+%25l:%25M+%25p"
+)
 
 print("Connecting to", ssid)
 wifi.radio.connect(ssid, password)
@@ -237,15 +242,18 @@ pool = socketpool.SocketPool(wifi.radio)
 requests = adafruit_requests.Session(pool, ssl.create_default_context())
 
 response = requests.get(TIME_URL)
-current_time = response.text.strip()
-print("Current time:", current_time)
+current_date_time = response.text.strip()
+print("Current time:", current_date_time)
+
+response = requests.get(TIME_URL_READABLE)
+current_readable_time = response.text.strip()
 
 # --- Handle button wake: mark corresponding item as completed ---
 wake_button = get_wake_button()
 if wake_button:
     item_index = BUTTON_TO_INDEX.get(wake_button)
     if item_index is not None:
-        today = current_time.split(" ")[0]  # Extract YYYY-MM-DD from timestamp
+        today = current_date_time.split(" ")[0]  # Extract YYYY-MM-DD from timestamp
         print(f"Button {wake_button} pressed — marking item {item_index} completed")
         mark_item_completed(item_index, today)
 
@@ -254,7 +262,7 @@ if wake_button:
 # ── Status bar (top line): refresh time on the left, battery on the right ──
 status_time_label = label.Label(
     terminalio.FONT,
-    text=f"Refreshed: {current_time}",
+    text=f"Refreshed: {current_readable_time}",
     color=0x000000,
     anchor_point=(0.0, 0.5),
     anchored_position=(2, STATUS_BAR_HEIGHT // 2),
@@ -285,7 +293,7 @@ items.sort(key=lambda x: x.get("due_date", ""))  # Earliest due dates first
 
 # Extract titles and due dates for display, pad to 4 items
 displayed_items = items[:4]
-today_str = current_time.split(" ")[0]  # Extract YYYY-MM-DD
+today_str = current_date_time.split(" ")[0]  # Extract YYYY-MM-DD
 
 # Each column is 74px wide. terminalio.FONT is 6px/char, so at scale=1
 # only ~12 chars fit per column (74 / 6 = 12.3).
