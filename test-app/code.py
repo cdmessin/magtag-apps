@@ -128,7 +128,7 @@ def mark_item_completed(item_index, current_date):
         return  # Invalid index, nothing to do
     
     # Sort items the same way as display to match button to correct item
-    items.sort(key=lambda x: x.get("due_date", ""), reverse=True)
+    items.sort(key=lambda x: x.get("due_date", ""))
     
     item = items[item_index]
     item["last_completed"] = current_date
@@ -236,7 +236,7 @@ content_group.append(Line(0, STATUS_BAR_HEIGHT, display.width - 1, STATUS_BAR_HE
 # Get data for each
 data = db_read()
 items = data.get("items", [])
-items.sort(key=lambda x: x.get("due_date", ""), reverse=True)  # Newest first
+items.sort(key=lambda x: x.get("due_date", ""))  # Earliest due dates first
 
 # Extract titles and due dates for display, pad to 4 items
 displayed_items = items[:4]
