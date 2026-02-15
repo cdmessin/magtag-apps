@@ -361,6 +361,8 @@ for i in range(4):
 # ── Refresh the e-ink display ──
 time.sleep(display.time_to_refresh)
 display.refresh()
+while display.busy:
+    pass
 
 # --- Dev mode escape hatch ---
 # In dev mode, Button A is held during reset. boot.py keeps USB writable
@@ -377,8 +379,12 @@ else:
 
     # --- Deep sleep ---
     # The e-ink display retains the image without power.
-    # Wake after 1 hour or on any button press.
-    time_alarm = alarm.time.TimeAlarm(monotonic_time=time.monotonic() + 3600)
+    # Disable WiFi radio before sleep to avoid drawing hundreds of mA.
+    wifi.radio.enabled = False
+
+    # Wake after designated time or on any button press.
+    SLEEP_MINS = 240  # 4 Hours
+    time_alarm = alarm.time.TimeAlarm(monotonic_time=time.monotonic() + (SLEEP_MINS * 60))
     button_a_alarm = alarm.pin.PinAlarm(pin=board.D15, value=False, pull=True)
     button_b_alarm = alarm.pin.PinAlarm(pin=board.D14, value=False, pull=True)
     button_c_alarm = alarm.pin.PinAlarm(pin=board.D12, value=False, pull=True)
