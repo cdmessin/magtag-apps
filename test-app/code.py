@@ -105,6 +105,20 @@ def add_days_to_date(date_str, days):
     return f"{year:04d}-{month:02d}-{day:02d}"
 
 
+def format_due_date(due_date, today_str):
+    """Format due date as 'past due', 'today', 'tomorrow', or the date."""
+    if due_date < today_str:
+        return "past due"
+    if due_date == today_str:
+        return "today"
+    tomorrow = add_days_to_date(today_str, 1)
+    if due_date == tomorrow:
+        return "tomorrow"
+    # Return just month/day for brevity
+    parts = due_date.split("-")
+    return f"{int(parts[1])}/{int(parts[2])}"
+
+
 def mark_item_completed(item_index, current_date):
     """Mark an item as completed today and recalculate its due date."""
     data = db_read()
@@ -224,18 +238,27 @@ data = db_read()
 items = data.get("items", [])
 items.sort(key=lambda x: x.get("due_date", ""), reverse=True)  # Newest first
 
-# Extract titles for display, pad to 4 items
-displayed_titles = [item.get("title", "") for item in items[:4]]
-displayed_titles += [""] * (4 - len(displayed_titles))
+# Extract titles and due dates for display, pad to 4 items
+displayed_items = items[:4]
+today_str = current_time.split(" ")[0]  # Extract YYYY-MM-DD
 
 # Each column is 74px wide. terminalio.FONT is 6px/char, so at scale=1
 # only ~12 chars fit per column (74 / 6 = 12.3).
-for i, title in enumerate(displayed_titles):
+for i in range(4):
     block_x = i * BLOCK_WIDTH
 
     # Vertical separator line between columns (skip the first — left edge)
     if i > 0:
         content_group.append(Line(block_x, CONTENT_TOP, block_x, USABLE_HEIGHT - 1, 0x999999))
+
+    if i < len(displayed_items):
+        item = displayed_items[i]
+        title = item.get("title", "")
+        due_date = item.get("due_date", "")
+        due_text = format_due_date(due_date, today_str) if due_date else ""
+    else:
+        title = ""
+        due_text = ""
 
     # Label at top of block centered horizontally
     placeholder = label.Label(
@@ -243,10 +266,22 @@ for i, title in enumerate(displayed_titles):
         text=title,
         color=0x000000,
         anchor_point=(0.5, 0.5),
-        anchored_position=(block_x + BLOCK_WIDTH // 2, CONTENT_TOP + 6),
+        anchored_position=(block_x + BLOCK_WIDTH // 2, CONTENT_TOP + 14),
         scale=1,
     )
     content_group.append(placeholder)
+
+    # Due date at bottom of block
+    if due_text:
+        due_label = label.Label(
+            terminalio.FONT,
+            text=due_text,
+            color=0x000000,
+            anchor_point=(0.5, 1.0),
+            anchored_position=(block_x + BLOCK_WIDTH // 2, USABLE_HEIGHT - 4),
+            scale=1,
+        )
+        content_group.append(due_label)
 
 # ── Refresh the e-ink display ──
 time.sleep(display.time_to_refresh)
