@@ -13,6 +13,7 @@ import displayio
 import terminalio
 from adafruit_display_text import label
 from adafruit_display_shapes.line import Line
+from adafruit_display_shapes.rect import Rect
 
 # --- Button-to-pin mapping ---
 # MagTag has 4 buttons (A-D) mapped to these GPIO pins
@@ -117,6 +118,50 @@ def format_due_date(due_date, today_str):
     # Return just month/day for brevity
     parts = due_date.split("-")
     return f"{int(parts[1])}/{int(parts[2])}"
+
+
+def days_between(date1, date2):
+    """Calculate days between two YYYY-MM-DD date strings (date2 - date1)."""
+    y1, m1, d1 = map(int, date1.split("-"))
+    y2, m2, d2 = map(int, date2.split("-"))
+    # Simple day count using a reference point
+    def to_days(y, m, d):
+        # Approximate days since year 0
+        days = y * 365 + d
+        for i in range(1, m):
+            days += [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][i]
+        # Add leap years
+        days += y // 4 - y // 100 + y // 400
+        if m <= 2 and (y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)):
+            days -= 1
+        return days
+    return to_days(y2, m2, d2) - to_days(y1, m1, d1)
+
+
+def calculate_progress(item, today_str):
+    """Calculate progress 0.0-1.0 based on days elapsed since last completion."""
+    last_completed = item.get("last_completed", "")
+    interval = int(item.get("day_interval", 1))
+    if not last_completed or interval <= 0:
+        return 0.0
+    days_elapsed = days_between(last_completed, today_str)
+    progress = days_elapsed / interval
+    return max(0.0, min(1.0, progress))  # Clamp to 0-1
+
+
+def get_fill_color(progress):
+    """Return grayscale fill color based on progress (0.0-1.0)."""
+    if progress >= 0.8:
+        return 0x000000  # Black - urgent
+    elif progress >= 0.5:
+        return 0x666666  # Medium gray
+    else:
+        return 0xAAAAAA  # Light gray
+
+
+def is_past_due(due_date, today_str):
+    """Check if an item is past due."""
+    return due_date < today_str
 
 
 def mark_item_completed(item_index, current_date):
@@ -244,6 +289,12 @@ today_str = current_time.split(" ")[0]  # Extract YYYY-MM-DD
 
 # Each column is 74px wide. terminalio.FONT is 6px/char, so at scale=1
 # only ~12 chars fit per column (74 / 6 = 12.3).
+# Progress bar dimensions
+BAR_WIDTH = 12
+BAR_HEIGHT = 40
+BAR_TOP = CONTENT_TOP + 38  # Below the title
+BAR_BOTTOM = BAR_TOP + BAR_HEIGHT
+
 for i in range(4):
     block_x = i * BLOCK_WIDTH
 
@@ -256,27 +307,51 @@ for i in range(4):
         title = item.get("title", "")
         due_date = item.get("due_date", "")
         due_text = format_due_date(due_date, today_str) if due_date else ""
+        progress = calculate_progress(item, today_str)
+        past_due = is_past_due(due_date, today_str) if due_date else False
     else:
         title = ""
         due_text = ""
+        progress = 0.0
+        past_due = False
+
+    # Inverted background for past due items
+    if past_due:
+        content_group.append(Rect(block_x + 1, CONTENT_TOP, BLOCK_WIDTH - 2, USABLE_HEIGHT - CONTENT_TOP - 1, fill=0x000000))
+        text_color = 0xFFFFFF
+    else:
+        text_color = 0x000000
 
     # Label at top of block centered horizontally
     placeholder = label.Label(
         terminalio.FONT,
         text=title,
-        color=0x000000,
+        color=text_color,
         anchor_point=(0.5, 0.5),
         anchored_position=(block_x + BLOCK_WIDTH // 2, CONTENT_TOP + 14),
         scale=1,
     )
     content_group.append(placeholder)
 
+    # Progress bar (outline + fill)
+    if i < len(displayed_items):
+        bar_x = block_x + (BLOCK_WIDTH - BAR_WIDTH) // 2
+        # Outline - white for past due (inverted), black otherwise
+        outline_color = 0xFFFFFF if past_due else 0x000000
+        content_group.append(Rect(bar_x, BAR_TOP, BAR_WIDTH, BAR_HEIGHT, outline=outline_color))
+        # Fill from bottom upward based on progress with urgency-based color
+        fill_height = int(BAR_HEIGHT * progress)
+        if fill_height > 0:
+            fill_y = BAR_TOP + BAR_HEIGHT - fill_height
+            fill_color = 0xFFFFFF if past_due else get_fill_color(progress)
+            content_group.append(Rect(bar_x + 1, fill_y, BAR_WIDTH - 2, fill_height - 1, fill=fill_color))
+
     # Due date at bottom of block
     if due_text:
         due_label = label.Label(
             terminalio.FONT,
             text=due_text,
-            color=0x000000,
+            color=text_color,
             anchor_point=(0.5, 1.0),
             anchored_position=(block_x + BLOCK_WIDTH // 2, USABLE_HEIGHT - 4),
             scale=1,

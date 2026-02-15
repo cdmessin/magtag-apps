@@ -2,15 +2,15 @@
   "items": [
     {
       "title": "Take Iron\nMeds",
-      "last_completed": "2026-02-04",
+      "last_completed": "2026-02-14",
       "day_interval": "2",
       "due_date": "2026-02-16"
     },
     {
       "title": "Clean Litter\nBox",
-      "last_completed": "2026-02-10",
-      "day_interval": "3",
-      "due_date": "2026-02-11"
+      "last_completed": "2026-02-14",
+      "day_interval": "2",
+      "due_date": "2026-02-16"
     },
     {
       "title": "Bathe Benji",
