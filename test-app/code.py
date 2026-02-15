@@ -14,6 +14,17 @@ import terminalio
 from adafruit_display_text import label
 from adafruit_display_shapes.line import Line
 
+# --- Button-to-pin mapping ---
+# MagTag has 4 buttons (A-D) mapped to these GPIO pins
+BUTTON_PINS = {
+    "A": board.D15,
+    "B": board.D14,
+    "C": board.D12,
+    "D": board.D11,
+}
+# Map buttons to item indices (button A -> item 0, etc.)
+BUTTON_TO_INDEX = {"A": 0, "B": 1, "C": 2, "D": 3}
+
 # --- Display setup ---
 # Take over the display immediately to prevent terminal output on screen
 display = board.DISPLAY
@@ -57,6 +68,61 @@ def db_read():
 def db_write(data):
     with open(DATA_PATH, "w") as f:
         json.dump(data, f)
+
+
+def get_wake_button():
+    """Return which button ('A'-'D') triggered the wake, or None if not a button wake."""
+    wake_alarm = alarm.wake_alarm
+    if wake_alarm is None or not isinstance(wake_alarm, alarm.pin.PinAlarm):
+        return None
+    for button_name, pin in BUTTON_PINS.items():
+        if wake_alarm.pin == pin:
+            return button_name
+    return None
+
+
+def add_days_to_date(date_str, days):
+    """Add days to a YYYY-MM-DD date string. Returns new date string."""
+    year, month, day = map(int, date_str.split("-"))
+    # Days in each month (non-leap year base)
+    days_in_month = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    # Leap year check
+    if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
+        days_in_month[2] = 29
+    
+    day += days
+    while day > days_in_month[month]:
+        day -= days_in_month[month]
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+            # Recalculate leap year for new year
+            if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
+                days_in_month[2] = 29
+            else:
+                days_in_month[2] = 28
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def mark_item_completed(item_index, current_date):
+    """Mark an item as completed today and recalculate its due date."""
+    data = db_read()
+    items = data.get("items", [])
+    
+    if item_index < 0 or item_index >= len(items):
+        return  # Invalid index, nothing to do
+    
+    # Sort items the same way as display to match button to correct item
+    items.sort(key=lambda x: x.get("due_date", ""), reverse=True)
+    
+    item = items[item_index]
+    item["last_completed"] = current_date
+    interval = int(item.get("day_interval", 1))
+    item["due_date"] = add_days_to_date(current_date, interval)
+    
+    data["items"] = items
+    db_write(data)
 
 # --- Read battery voltage & compute percentage ---
 # MagTag battery voltage divider is on board.VOLTAGE_MONITOR
@@ -115,6 +181,15 @@ response = requests.get(TIME_URL)
 current_time = response.text.strip()
 print("Current time:", current_time)
 
+# --- Handle button wake: mark corresponding item as completed ---
+wake_button = get_wake_button()
+if wake_button:
+    item_index = BUTTON_TO_INDEX.get(wake_button)
+    if item_index is not None:
+        today = current_time.split(" ")[0]  # Extract YYYY-MM-DD from timestamp
+        print(f"Button {wake_button} pressed — marking item {item_index} completed")
+        mark_item_completed(item_index, today)
+
 # --- Build the display ---
 
 # ── Status bar (top line): refresh time on the left, battery on the right ──
@@ -142,10 +217,22 @@ content_group.append(battery_label)
 # Horizontal separator below status bar
 content_group.append(Line(0, STATUS_BAR_HEIGHT, display.width - 1, STATUS_BAR_HEIGHT, 0x000000))
 
-# ── Four content columns with placeholder text ──
-# Each column is 74px wide. terminalio.FONT is 6px/char, so at scale=2
-# only ~6 chars fit per column (74 / 12 = 6.1). Use short labels.
-block_labels = ["Blk 1", "Blk 2", "Blk 3", "Blk 5"]
+# ── Four content columns ──
+
+# Get data for each
+data = db_read()
+items = data.get("items", [])
+items.sort(key=lambda x: x.get("due_date", 0), reverse=True)  # Newest first
+
+
+
+
+displayed_items = items[:4]  # Show up to 4 items
+
+
+# Each column is 74px wide. terminalio.FONT is 6px/char, so at scale=1
+# only ~12 chars fit per column (74 / 6 = 12.3).
+block_labels = displayed_items + [""] * (4 - len(displayed_items))  # Pad to 4 items if needed
 for i, block_text in enumerate(block_labels):
     block_x = i * BLOCK_WIDTH
 
@@ -153,14 +240,14 @@ for i, block_text in enumerate(block_labels):
     if i > 0:
         content_group.append(Line(block_x, CONTENT_TOP, block_x, USABLE_HEIGHT - 1, 0x999999))
 
-    # Centered placeholder label in each column
+    # Label at top of block centered horizontally
     placeholder = label.Label(
         terminalio.FONT,
         text=block_text,
         color=0x000000,
         anchor_point=(0.5, 0.5),
-        anchored_position=(block_x + BLOCK_WIDTH // 2, CONTENT_TOP + BLOCK_HEIGHT // 2),
-        scale=2,
+        anchored_position=(block_x + BLOCK_WIDTH // 2, CONTENT_TOP + 6),
+        scale=1,
     )
     content_group.append(placeholder)
 

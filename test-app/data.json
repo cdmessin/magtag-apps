@@ -1,19 +1,34 @@
 {
   "items": [
     {
-      "title": "Water plants",
-      "due_date": "2026-02-14",
-      "last_completed": "2026-02-07"
+      "title": "Take Iron\nMeds",
+      "last_completed": "2026-02-04",
+      "day_interval": "2",
+      "due_date": "2026-02-16"
     },
     {
-      "title": "Take vitamins",
-      "due_date": "2026-02-12",
-      "last_completed": "2026-02-11"
+      "title": "Clean Litter\nBox",
+      "last_completed": "2026-02-10",
+      "day_interval": "3",
+      "due_date": "2026-02-11"
     },
     {
-      "title": "Clean filter",
-      "due_date": "2026-02-28",
-      "last_completed": "2026-01-28"
+      "title": "Bathe Benji",
+      "last_completed": "2026-02-08",
+      "day_interval": "90",
+      "due_date": "2026-05-08"
+    },
+    {
+      "title": "Deep Clean",
+      "day_interval": "30",
+      "last_completed": "2026-02-11",
+      "due_date": "2026-02-12"
+    },
+    {
+      "title": "Rotate/Flip\nMattress",
+      "day_interval": "90",
+      "last_completed": "2026-02-08",
+      "due_date": "2026-05-28"
     }
   ]
 }
