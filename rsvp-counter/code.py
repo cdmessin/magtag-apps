@@ -149,7 +149,7 @@ RSVP_API_KEY = os.getenv("RSVP_API_KEY")
 GRAPHQL_QUERY = (
     "{ "
     "listGuests(limit: 1000) { items { guestCount isVendor } } "
-    "listRSVPs(limit: 1000) { items { guestName numberOfGuests attending createdAt } } "
+    "listRSVPS(limit: 1000) { items { guestName numberOfGuests attending createdAt } } "
     "}"
 )
 
@@ -176,7 +176,7 @@ try:
             total_invited += guest.get("guestCount", 0)
 
     # Parse RSVPs for attending count and most recent RSVP
-    rsvps = data.get("data", {}).get("listRSVPs", {}).get("items", [])
+    rsvps = data.get("data", {}).get("listRSVPS", {}).get("items", [])
     latest_rsvp = None
     for rsvp in rsvps:
         if rsvp.get("attending", False):
