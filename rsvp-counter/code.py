@@ -170,16 +170,18 @@ try:
     response.close()
 
     # Parse guests for total invited count (exclude vendors)
+    guest_to_total_count = {}
     guests = data.get("data", {}).get("listGuests", {}).get("items", [])
     for guest in guests:
         if not guest.get("isVendor", False):
             total_invited += guest.get("guestCount", 0)
+            guest_to_total_count[guest.get("code")] = guest.get("guestCount", 0)
 
     # Parse RSVPs for total RSVPed count and most recent RSVP
     rsvps = data.get("data", {}).get("listRSVPS", {}).get("items", [])
     latest_rsvp = None
     for rsvp in rsvps:
-        rsvped_count += rsvp.get("numberOfGuests", 0)
+        rsvped_count += guest_to_total_count.get(rsvp.get("accessCode"), 0)
         # Track most recent RSVP by createdAt (ISO 8601 sorts lexically)
         created = rsvp.get("createdAt", "")
         if latest_rsvp is None or created > latest_rsvp.get("createdAt", ""):
