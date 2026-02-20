@@ -323,13 +323,7 @@ for i in range(4):
         progress = 0.0
         past_due = False
 
-    # Inverted background for past due items
-    if past_due:
-        content_group.append(Rect(block_x + 1, CONTENT_TOP, BLOCK_WIDTH - 2, USABLE_HEIGHT - CONTENT_TOP - 1, fill=0x000000))
-        text_color = 0xFFFFFF
-    else:
-        text_color = 0x000000
-
+    text_color = 0x000000
     # Label at top of block centered horizontally
     placeholder = label.Label(
         terminalio.FONT,
@@ -344,8 +338,8 @@ for i in range(4):
     # Progress bar (outline + fill)
     if i < len(displayed_items):
         bar_x = block_x + (BLOCK_WIDTH - BAR_WIDTH) // 2
-        # Outline - white for past due (inverted), black otherwise
-        outline_color = 0xFFFFFF if past_due else 0x000000
+        # Outline - black
+        outline_color =  0x000000
         content_group.append(Rect(bar_x, BAR_TOP, BAR_WIDTH, BAR_HEIGHT, outline=outline_color))
         # Fill from bottom upward based on progress with urgency-based color
         fill_height = int(BAR_HEIGHT * progress)
