@@ -49,26 +49,14 @@ def celebrate_leds():
 
 
 # --- Display setup ---
-# Take over the display immediately to prevent terminal output on screen
 display = board.DISPLAY
-main_group = displayio.Group()
-
-# White background
-bg_bitmap = displayio.Bitmap(display.width, display.height, 1)
-bg_palette = displayio.Palette(1)
-bg_palette[0] = 0xFFFFFF
-main_group.append(displayio.TileGrid(bg_bitmap, pixel_shader=bg_palette, x=0, y=0))
 
 # The e-ink controller RAM is larger than the physical panel. With colstart=0
 # in the board definition, the top ~5 pixels of RAM fall outside the visible
 # area. Shift all content down to compensate. The bottom ~5 rows similarly
 # show noise from uninitialized RAM, so we treat them as unusable too.
-DISPLAY_Y_OFFSET =5
+DISPLAY_Y_OFFSET = 5
 USABLE_HEIGHT = display.height - DISPLAY_Y_OFFSET - 5  # ~120 usable rows
-
-content_group = displayio.Group(y=DISPLAY_Y_OFFSET)
-main_group.append(content_group)
-display.root_group = main_group
 
 # --- Layout constants ---
 # Physical display is 296 x 128, usable area is ~296 x 122 after offsets.
@@ -239,6 +227,12 @@ except Exception:
     battery_voltage = 0.0
     battery_percent = 0
 
+# --- Check for button wake early so we can give instant LED feedback ---
+wake_button = get_wake_button()
+if wake_button:
+    print(f"Button {wake_button} pressed — celebrating!")
+    celebrate_leds()
+
 # --- Connect to WiFi & fetch time ---
 ssid = os.getenv("CIRCUITPY_WIFI_SSID")
 password = os.getenv("CIRCUITPY_WIFI_PASSWORD")
@@ -271,16 +265,24 @@ response = requests.get(TIME_URL_READABLE)
 current_readable_time = response.text.strip()
 
 # --- Handle button wake: mark corresponding item as completed ---
-wake_button = get_wake_button()
 if wake_button:
     item_index = BUTTON_TO_INDEX.get(wake_button)
     if item_index is not None:
         today = current_date_time.split(" ")[0]  # Extract YYYY-MM-DD from timestamp
-        print(f"Button {wake_button} pressed — marking item {item_index} completed")
+        print(f"Button {wake_button} — marking item {item_index} completed")
         mark_item_completed(item_index, today)
-        celebrate_leds()
 
 # --- Build the display ---
+main_group = displayio.Group()
+
+# White background
+bg_bitmap = displayio.Bitmap(display.width, display.height, 1)
+bg_palette = displayio.Palette(1)
+bg_palette[0] = 0xFFFFFF
+main_group.append(displayio.TileGrid(bg_bitmap, pixel_shader=bg_palette, x=0, y=0))
+
+content_group = displayio.Group(y=DISPLAY_Y_OFFSET)
+main_group.append(content_group)
 
 # ── Status bar (top line): refresh time on the left, battery on the right ──
 status_time_label = label.Label(
@@ -384,6 +386,9 @@ for i in range(4):
         content_group.append(due_label)
 
 # ── Refresh the e-ink display ──
+# Assign root_group only after all content is built, so the display updates
+# in a single refresh instead of flashing blank first.
+display.root_group = main_group
 time.sleep(display.time_to_refresh)
 display.refresh()
 while display.busy:
