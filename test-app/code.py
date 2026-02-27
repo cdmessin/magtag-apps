@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import ssl
 import time
 import alarm
@@ -10,6 +11,7 @@ import analogio
 import board
 import digitalio
 import displayio
+import neopixel
 import terminalio
 from adafruit_display_text import label
 from adafruit_display_shapes.line import Line
@@ -25,6 +27,26 @@ BUTTON_PINS = {
 }
 # Map buttons to item indices (button A -> item 0, etc.)
 BUTTON_TO_INDEX = {"A": 0, "B": 1, "C": 2, "D": 3}
+
+# --- NeoPixel setup ---
+NUM_PIXELS = 4
+pixels = neopixel.NeoPixel(board.NEOPIXEL, NUM_PIXELS, brightness=0.3, auto_write=False)
+pixels.fill(0)
+pixels.show()
+
+
+def celebrate_leds():
+    """Flash random colors left-to-right across the 4 NeoPixels for ~3 seconds."""
+    for _ in range(6):  # 6 sweeps ≈ 3 seconds
+        for i in range(NUM_PIXELS):
+            color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+            pixels[i] = color
+            pixels.show()
+            time.sleep(0.1)
+            pixels[i] = 0
+    pixels.fill(0)
+    pixels.show()
+
 
 # --- Display setup ---
 # Take over the display immediately to prevent terminal output on screen
@@ -256,6 +278,7 @@ if wake_button:
         today = current_date_time.split(" ")[0]  # Extract YYYY-MM-DD from timestamp
         print(f"Button {wake_button} pressed — marking item {item_index} completed")
         mark_item_completed(item_index, today)
+        celebrate_leds()
 
 # --- Build the display ---
 
@@ -383,6 +406,7 @@ else:
     # The e-ink display retains the image without power.
     # Disable WiFi radio before sleep to avoid drawing hundreds of mA.
     wifi.radio.enabled = False
+    pixels.deinit()
 
     # Wake after designated time or on any button press.
     SLEEP_MINS = 240  # 4 Hours
