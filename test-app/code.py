@@ -366,12 +366,15 @@ for i in range(4):
         # Outline - black
         outline_color =  0x000000
         content_group.append(Rect(bar_x, BAR_TOP, BAR_WIDTH, BAR_HEIGHT, outline=outline_color))
-        # Fill from bottom upward based on progress with urgency-based color
-        fill_height = int(BAR_HEIGHT * progress)
-        if fill_height > 0:
-            fill_y = BAR_TOP + BAR_HEIGHT - fill_height
-            fill_color = 0xFFFFFF if past_due else get_fill_color(progress)
-            content_group.append(Rect(bar_x + 1, fill_y, BAR_WIDTH - 2, fill_height - 1, fill=fill_color))
+        # Fill from bottom upward based on progress with urgency-based color.
+        # Past due: fill the entire bar solid black.
+        if past_due:
+            content_group.append(Rect(bar_x + 1, BAR_TOP + 1, BAR_WIDTH - 2, BAR_HEIGHT - 2, fill=0x000000))
+        else:
+            fill_height = int(BAR_HEIGHT * progress)
+            if fill_height > 1:
+                fill_y = BAR_TOP + BAR_HEIGHT - fill_height
+                content_group.append(Rect(bar_x + 1, fill_y, BAR_WIDTH - 2, fill_height - 1, fill=get_fill_color(progress)))
 
     # Due date at bottom of block
     if due_text:
