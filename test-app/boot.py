@@ -80,12 +80,19 @@ def ota_update():
 
 
 # --- Button A check ---
-btn = digitalio.DigitalInOut(board.D15)
-btn.direction = digitalio.Direction.INPUT
-btn.pull = digitalio.Pull.UP
-
-dev_mode = not btn.value  # Active low: pressed = False
-btn.deinit()
+# Only treat button A as a dev-mode signal on a HARD boot (reset/power-on).
+# On a deep-sleep wake, button A is the wake source for the first item in
+# code.py, and a long press is the "mark yesterday" gesture. We must not
+# confuse that with dev mode, otherwise the filesystem stays read-only and
+# code.py crashes when it tries to persist state.
+if alarm.wake_alarm is None:
+    btn = digitalio.DigitalInOut(board.D15)
+    btn.direction = digitalio.Direction.INPUT
+    btn.pull = digitalio.Pull.UP
+    dev_mode = not btn.value  # Active low: pressed = False
+    btn.deinit()
+else:
+    dev_mode = False
 
 if dev_mode:
     print("Dev mode — USB writable, OTA skipped")
