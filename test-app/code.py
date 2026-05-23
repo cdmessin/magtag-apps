@@ -36,9 +36,17 @@ pixels.show()
 
 
 def celebrate_leds():
-    """Flash random colors left-to-right across the 4 NeoPixels for ~3 seconds."""
-    for _ in range(6):  # 6 sweeps ≈ 3 seconds
-        for i in range(NUM_PIXELS):
+    """Flash random colors, alternating sweep direction each pass for ~3 seconds.
+
+    First sweep goes right-to-left, then left-to-right, and so on.
+    """
+    for sweep in range(6):  # 6 sweeps ≈ 3 seconds
+        # Even sweeps: right-to-left; odd sweeps: left-to-right
+        if sweep % 2 == 0:
+            order = range(NUM_PIXELS - 1, -1, -1)
+        else:
+            order = range(NUM_PIXELS)
+        for i in order:
             color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
             pixels[i] = color
             pixels.show()
@@ -46,6 +54,57 @@ def celebrate_leds():
             pixels[i] = 0
     pixels.fill(0)
     pixels.show()
+
+
+# Hold the wake button this long to mark the item as completed YESTERDAY
+# instead of today. During the hold, the NeoPixels fill in left-to-right as
+# a countdown so the user knows when they can release.
+HOLD_THRESHOLD_S = 1.5
+
+
+def detect_hold(button_name):
+    """Poll the wake button. Return True if held continuously for HOLD_THRESHOLD_S.
+
+    Lights NeoPixels progressively (amber) as a countdown. If the user releases
+    early the pixels go dark and we return False. If the threshold is reached
+    all pixels flash green briefly to confirm "yesterday" mode.
+    """
+    pin = BUTTON_PINS.get(button_name)
+    if pin is None:
+        return False
+    io = digitalio.DigitalInOut(pin)
+    io.direction = digitalio.Direction.INPUT
+    io.pull = digitalio.Pull.UP
+    try:
+        start = time.monotonic()
+        lit = 0
+        while True:
+            elapsed = time.monotonic() - start
+            # Button released early → normal "today" completion
+            if io.value:
+                pixels.fill(0)
+                pixels.show()
+                return False
+            if elapsed >= HOLD_THRESHOLD_S:
+                # Confirmation flash: solid green
+                pixels.fill((0, 200, 0))
+                pixels.show()
+                time.sleep(0.3)
+                pixels.fill(0)
+                pixels.show()
+                return True
+            # Progressive amber fill as countdown
+            target = int((elapsed / HOLD_THRESHOLD_S) * NUM_PIXELS) + 1
+            if target > NUM_PIXELS:
+                target = NUM_PIXELS
+            if target != lit:
+                for i in range(NUM_PIXELS):
+                    pixels[i] = (180, 90, 0) if i < target else 0
+                pixels.show()
+                lit = target
+            time.sleep(0.02)
+    finally:
+        io.deinit()
 
 
 # --- Display setup ---
@@ -92,27 +151,34 @@ def get_wake_button():
     return None
 
 
+def _is_leap(year):
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+
+def _days_in_month(year, month):
+    if month == 2 and _is_leap(year):
+        return 29
+    return [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
+
+
 def add_days_to_date(date_str, days):
-    """Add days to a YYYY-MM-DD date string. Returns new date string."""
+    """Add days (positive or negative) to a YYYY-MM-DD date string."""
     year, month, day = map(int, date_str.split("-"))
-    # Days in each month (non-leap year base)
-    days_in_month = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    # Leap year check
-    if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
-        days_in_month[2] = 29
-    
     day += days
-    while day > days_in_month[month]:
-        day -= days_in_month[month]
+    # Roll forward
+    while day > _days_in_month(year, month):
+        day -= _days_in_month(year, month)
         month += 1
         if month > 12:
             month = 1
             year += 1
-            # Recalculate leap year for new year
-            if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
-                days_in_month[2] = 29
-            else:
-                days_in_month[2] = 28
+    # Roll backward
+    while day < 1:
+        month -= 1
+        if month < 1:
+            month = 12
+            year -= 1
+        day += _days_in_month(year, month)
     return f"{year:04d}-{month:02d}-{day:02d}"
 
 
@@ -174,22 +240,27 @@ def is_past_due(due_date, today_str):
     return due_date < today_str
 
 
-def mark_item_completed(item_index, current_date):
-    """Mark an item as completed today and recalculate its due date."""
+def mark_item_completed(item_index, current_date, yesterday=False):
+    """Mark an item as completed and recalculate its due date.
+
+    If yesterday=True, the completion is recorded as the day before current_date
+    and the next due date is offset accordingly.
+    """
     data = db_read()
     items = data.get("items", [])
-    
+
     if item_index < 0 or item_index >= len(items):
         return  # Invalid index, nothing to do
-    
+
     # Sort items the same way as display to match button to correct item
     items.sort(key=lambda x: x.get("due_date", ""))
-    
+
     item = items[item_index]
-    item["last_completed"] = current_date
+    completion_date = add_days_to_date(current_date, -1) if yesterday else current_date
+    item["last_completed"] = completion_date
     interval = int(item.get("day_interval", 1))
-    item["due_date"] = add_days_to_date(current_date, interval)
-    
+    item["due_date"] = add_days_to_date(completion_date, interval)
+
     data["items"] = items
     db_write(data)
 
@@ -228,11 +299,15 @@ except Exception:
     battery_percent = 0
 
 # --- Check for button wake early so we can give instant LED feedback ---
+# If the user keeps holding the button past HOLD_THRESHOLD_S, the completion
+# is recorded for YESTERDAY instead of today.
 wake_button = get_wake_button()
+mark_yesterday = False
 if wake_button:
-    print(f"Button {wake_button} pressed — celebrating!")
-    celebrate_leds()
-
+    print(f"Button {wake_button} pressed")
+    mark_yesterday = detect_hold(wake_button)
+    if mark_yesterday:
+        print("Hold detected — marking as YESTERDAY")
 # --- Connect to WiFi & fetch time ---
 ssid = os.getenv("CIRCUITPY_WIFI_SSID")
 password = os.getenv("CIRCUITPY_WIFI_PASSWORD")
@@ -269,8 +344,9 @@ if wake_button:
     item_index = BUTTON_TO_INDEX.get(wake_button)
     if item_index is not None:
         today = current_date_time.split(" ")[0]  # Extract YYYY-MM-DD from timestamp
-        print(f"Button {wake_button} — marking item {item_index} completed")
-        mark_item_completed(item_index, today)
+        when = "yesterday" if mark_yesterday else "today"
+        print(f"Button {wake_button} — marking item {item_index} completed ({when})")
+        mark_item_completed(item_index, today, yesterday=mark_yesterday)
 
 # --- Build the display ---
 main_group = displayio.Group()
@@ -394,6 +470,10 @@ for i in range(4):
 display.root_group = main_group
 time.sleep(display.time_to_refresh)
 display.refresh()
+# Run the LED celebration while the e-ink panel refreshes in the background.
+# display.refresh() is non-blocking; display.busy stays True for ~2-3 s.
+if wake_button:
+    celebrate_leds()
 while display.busy:
     pass
 
