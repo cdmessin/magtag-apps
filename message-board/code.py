@@ -509,13 +509,13 @@ while display.busy:
 
 
 # --- Dev mode escape hatch ---
-# Only treat held Button A as "stay in REPL" on a true reset, not on a
-# deep-sleep wake (otherwise pressing A to wake would always drop into REPL).
-btn_a = digitalio.DigitalInOut(board.D15)
-btn_a.direction = digitalio.Direction.INPUT
-btn_a.pull = digitalio.Pull.UP
-dev_skip_sleep = (not btn_a.value) and (alarm.wake_alarm is None)
-btn_a.deinit()
+# Only treat held Button D as "stay in REPL" on a true reset, not on a
+# deep-sleep wake. Using D rather than A since A may be physically unreliable.
+btn_d = digitalio.DigitalInOut(board.D11)
+btn_d.direction = digitalio.Direction.INPUT
+btn_d.pull = digitalio.Pull.UP
+dev_skip_sleep = (not btn_d.value) and (alarm.wake_alarm is None)
+btn_d.deinit()
 if dev_skip_sleep:
     print("Dev mode — skipping deep sleep. REPL active.")
 else:
