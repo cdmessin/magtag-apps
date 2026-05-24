@@ -432,14 +432,14 @@ if current_msg:
         text=header_text,
         color=0x000000,
         anchor_point=(0.0, 0.0),
-        anchored_position=(BODY_LEFT, CONTENT_TOP),
+        anchored_position=(BODY_LEFT, header_y),
         scale=1,
     ))
 
-    scale, lines = choose_scale(body_text, BODY_WIDTH, BODY_HEIGHT)
+    scale, lines = choose_scale(body_text, BODY_WIDTH, body_height_eff)
     glyph_h = 12 * scale
     block_h = len(lines) * glyph_h
-    start_y = BODY_TOP + max(0, (BODY_HEIGHT - block_h) // 2)
+    start_y = body_top_eff + max(0, (body_height_eff - block_h) // 2)
     for i, line in enumerate(lines):
         content_group.append(label.Label(
             terminalio.FONT,
@@ -458,7 +458,7 @@ else:
         text=msg,
         color=0x000000,
         anchor_point=(0.5, 0.5),
-        anchored_position=(display.width // 2, (BODY_TOP + BODY_BOTTOM) // 2),
+        anchored_position=(display.width // 2, (body_top_eff + BODY_BOTTOM) // 2),
         scale=2,
     ))
 
