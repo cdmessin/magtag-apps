@@ -85,19 +85,23 @@ def ota_update():
 # code.py, and a long press is the "mark yesterday" gesture. We must not
 # confuse that with dev mode, otherwise the filesystem stays read-only and
 # code.py crashes when it tries to persist state.
+print(f"boot.py running. wake_alarm={alarm.wake_alarm!r}")
 if alarm.wake_alarm is None:
     btn = digitalio.DigitalInOut(board.D15)
     btn.direction = digitalio.Direction.INPUT
     btn.pull = digitalio.Pull.UP
     dev_mode = not btn.value  # Active low: pressed = False
     btn.deinit()
+    print(f"Hard boot. Button A held={dev_mode}")
 else:
     dev_mode = False
+    print("Wake from sleep — dev mode skipped")
 
 if dev_mode:
-    print("Dev mode — USB writable, OTA skipped")
+    print("Dev mode — USB writable, OTA skipped, filesystem read-only to code")
 else:
     storage.remount("/", readonly=False)
+    print("Filesystem remounted writable to code")
 
     if alarm.wake_alarm is None:
         # Hard boot (power-on or reset button) — try OTA
