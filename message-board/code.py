@@ -266,27 +266,34 @@ def fetch_messages(since_ts):
 
 
 def ack_messages(up_to_ts):
-    if not MSG_ACK_URL or not up_to_ts:
-        return False
+    """Returns (status_str, acked_count). status: 'ok'|'noop'|'http<NNN>'|'noconfig'|'err'."""
+    if not MSG_ACK_URL:
+        return ("noconfig", 0)
+    if not up_to_ts:
+        return ("noconfig", 0)
     try:
         r = requests.post(
             MSG_ACK_URL,
             json={"up_to_ts": up_to_ts},
             headers=auth_headers,
         )
-        ok = r.status_code == 200
-        if not ok:
-            print(f"POST ack: HTTP {r.status_code}")
-        else:
-            try:
-                print(f"Ack response: {r.json()}")
-            except Exception:
-                pass
+        code = r.status_code
+        acked = 0
+        try:
+            body = r.json()
+            acked = int(body.get("acked", 0))
+            print(f"Ack response: {body}")
+        except Exception:
+            pass
         r.close()
-        return ok
+        if code != 200:
+            return (f"http{code}", acked)
+        if acked == 0:
+            return ("noop", 0)
+        return ("ok", acked)
     except Exception as e:
         print(f"POST ack failed: {e}")
-        return False
+        return ("err", 0)
 
 
 # --- State + button action ---
@@ -294,19 +301,21 @@ state = db_read()
 last_seen_ts = state.get("last_seen_ts", "") or ""
 current_ts = state.get("current_ts", "") or ""
 
-ack_status = None  # None|"ok"|"fail"
+ack_status = None  # None | (code, n)  e.g. ('ok',1) ('noop',0) ('http404',0) ('err',0)
 
-if wake_button == "B" and current_ts:
-    print(f"Acking up to {current_ts}")
-    if ack_messages(current_ts):
-        last_seen_ts = current_ts
-        current_ts = ""
-        state["last_seen_ts"] = last_seen_ts
-        state["current_ts"] = current_ts
-        db_write(state)
-        ack_status = "ok"
+if wake_button == "B":
+    if current_ts:
+        print(f"Acking up to {current_ts}")
+        result = ack_messages(current_ts)
+        ack_status = result
+        if result[0] == "ok":
+            last_seen_ts = current_ts
+            current_ts = ""
+            state["last_seen_ts"] = last_seen_ts
+            state["current_ts"] = current_ts
+            db_write(state)
     else:
-        ack_status = "fail"
+        ack_status = ("noconfig", 0)
 
 # Always poll on every wake
 messages, server_now = fetch_messages(last_seen_ts)
@@ -354,9 +363,13 @@ content_group = displayio.Group(y=DISPLAY_Y_OFFSET)
 main_group.append(content_group)
 
 # Status bar: refresh time (left), battery (right), separator below
+status_left = f"Refreshed: {current_readable_time}"
+if ack_status is not None:
+    code, n = ack_status
+    status_left += f"  [Ack {code} n={n}]"
 content_group.append(label.Label(
     terminalio.FONT,
-    text=f"Refreshed: {current_readable_time}",
+    text=status_left,
     color=0x000000,
     anchor_point=(0.0, 0.5),
     anchored_position=(2, STATUS_BAR_HEIGHT // 2),
@@ -408,8 +421,8 @@ if current_msg:
         ))
 else:
     msg = "No new messages"
-    if ack_status == "fail":
-        msg = "Ack failed - will retry"
+    if ack_status is not None and ack_status[0] not in ("ok",):
+        msg = f"Ack: {ack_status[0]} (n={ack_status[1]})"
     content_group.append(label.Label(
         terminalio.FONT,
         text=msg,
@@ -444,8 +457,20 @@ time.sleep(display.time_to_refresh)
 display.refresh()
 
 # NeoPixel feedback while the panel refreshes.
-if ack_status == "ok":
-    flash_green()
+if ack_status is not None:
+    code = ack_status[0]
+    if code == "ok":
+        flash_green()
+    elif code == "noop":
+        pixels.fill((120, 100, 0))  # amber: HTTP 200 but acked=0 → backend matched nothing
+        pixels.show()
+        time.sleep(0.4)
+        pixels.fill(0); pixels.show()
+    else:
+        pixels.fill((150, 0, 0))    # red: HTTP error / network / no config
+        pixels.show()
+        time.sleep(0.4)
+        pixels.fill(0); pixels.show()
 elif current_msg:
     flash_blue()
 
