@@ -395,6 +395,7 @@ if ack_status is not None:
     debug_bits.append(f"Ack {code} n={n}")
 if db_write_error is not None:
     debug_bits.append("WRITE-FAIL")
+debug_height = 0
 if debug_bits:
     ls_tail = (last_seen_ts or "")[-8:] or "-"
     ct_tail = (current_ts or "")[-8:] or "-"
@@ -407,6 +408,12 @@ if debug_bits:
         anchored_position=(2, STATUS_BAR_HEIGHT + 1),
         scale=1,
     ))
+    debug_height = 12  # shift body content down to avoid overlap
+
+# Shift the body region down by the debug-line height when present.
+header_y = CONTENT_TOP + debug_height
+body_top_eff = BODY_TOP + debug_height
+body_height_eff = BODY_HEIGHT - debug_height
 
 # Body: header line + dynamically-scaled message body, OR empty-state.
 if current_msg:
