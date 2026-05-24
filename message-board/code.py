@@ -77,12 +77,19 @@ def db_read():
     except (OSError, ValueError):
         return {"last_seen_ts": "", "current_ts": ""}
 
+db_write_error = None  # populated if last db_write failed
+
 def db_write(data):
+    global db_write_error
     try:
         with open(DATA_PATH, "w") as f:
             json.dump(data, f)
+        db_write_error = None
+        return True
     except OSError as e:
-        print(f"db_write failed (likely dev mode): {e}")
+        db_write_error = str(e)
+        print(f"db_write failed: {e}")
+        return False
 
 
 def get_wake_button():
@@ -367,6 +374,13 @@ status_left = f"Refreshed: {current_readable_time}"
 if ack_status is not None:
     code, n = ack_status
     status_left += f"  [Ack {code} n={n}]"
+if db_write_error is not None:
+    status_left += "  [WRITE-FAIL]"
+# Debug: show last 8 chars of persisted last_seen_ts and current_ts so we can
+# tell at a glance whether state is updating between wakes.
+ls_tail = (last_seen_ts or "")[-8:] or "-"
+ct_tail = (current_ts or "")[-8:] or "-"
+status_left += f"  ls={ls_tail} ct={ct_tail}"
 content_group.append(label.Label(
     terminalio.FONT,
     text=status_left,
