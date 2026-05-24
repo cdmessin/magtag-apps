@@ -370,20 +370,9 @@ content_group = displayio.Group(y=DISPLAY_Y_OFFSET)
 main_group.append(content_group)
 
 # Status bar: refresh time (left), battery (right), separator below
-status_left = f"Refreshed: {current_readable_time}"
-if ack_status is not None:
-    code, n = ack_status
-    status_left += f"  [Ack {code} n={n}]"
-if db_write_error is not None:
-    status_left += "  [WRITE-FAIL]"
-# Debug: show last 8 chars of persisted last_seen_ts and current_ts so we can
-# tell at a glance whether state is updating between wakes.
-ls_tail = (last_seen_ts or "")[-8:] or "-"
-ct_tail = (current_ts or "")[-8:] or "-"
-status_left += f"  ls={ls_tail} ct={ct_tail}"
 content_group.append(label.Label(
     terminalio.FONT,
-    text=status_left,
+    text=f"Refreshed: {current_readable_time}",
     color=0x000000,
     anchor_point=(0.0, 0.5),
     anchored_position=(2, STATUS_BAR_HEIGHT // 2),
@@ -398,6 +387,26 @@ content_group.append(label.Label(
     scale=1,
 ))
 content_group.append(Line(0, STATUS_BAR_HEIGHT, display.width - 1, STATUS_BAR_HEIGHT, 0x000000))
+
+# Debug line (only shown when ack happened or persistence failed).
+debug_bits = []
+if ack_status is not None:
+    code, n = ack_status
+    debug_bits.append(f"Ack {code} n={n}")
+if db_write_error is not None:
+    debug_bits.append("WRITE-FAIL")
+if debug_bits:
+    ls_tail = (last_seen_ts or "")[-8:] or "-"
+    ct_tail = (current_ts or "")[-8:] or "-"
+    debug_bits.append(f"ls={ls_tail} ct={ct_tail}")
+    content_group.append(label.Label(
+        terminalio.FONT,
+        text="  ".join(debug_bits),
+        color=0x000000,
+        anchor_point=(0.0, 0.0),
+        anchored_position=(2, STATUS_BAR_HEIGHT + 1),
+        scale=1,
+    ))
 
 # Body: header line + dynamically-scaled message body, OR empty-state.
 if current_msg:
