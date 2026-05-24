@@ -23,7 +23,7 @@ BUTTON_PINS = {
     "D": board.D11,
 }
 
-BUTTON_LABELS = {"A": "Mark Seen", "B": "Refresh", "C": "-", "D": "-"}
+BUTTON_LABELS = {"A": "-", "B": "Mark Seen", "C": "Refresh", "D": "-"}
 
 # --- NeoPixel setup ---
 NUM_PIXELS = 4
@@ -296,7 +296,7 @@ current_ts = state.get("current_ts", "") or ""
 
 ack_status = None  # None|"ok"|"fail"
 
-if wake_button == "A" and current_ts:
+if wake_button == "B" and current_ts:
     print(f"Acking up to {current_ts}")
     if ack_messages(current_ts):
         last_seen_ts = current_ts
@@ -427,7 +427,7 @@ content_group.append(Line(0, BUTTON_LABEL_Y - BUTTON_LABEL_H - 2,
                           0x999999))
 for i, name in enumerate(btn_order):
     text = BUTTON_LABELS[name]
-    if name == "A" and not current_msg:
+    if name == "B" and not current_msg:
         text = "-"  # nothing to ack
     content_group.append(label.Label(
         terminalio.FONT,
@@ -454,15 +454,16 @@ while display.busy:
 
 
 # --- Dev mode escape hatch ---
+# Only treat held Button A as "stay in REPL" on a true reset, not on a
+# deep-sleep wake (otherwise pressing A to wake would always drop into REPL).
 btn_a = digitalio.DigitalInOut(board.D15)
 btn_a.direction = digitalio.Direction.INPUT
 btn_a.pull = digitalio.Pull.UP
-if not btn_a.value:
-    btn_a.deinit()
+dev_skip_sleep = (not btn_a.value) and (alarm.wake_alarm is None)
+btn_a.deinit()
+if dev_skip_sleep:
     print("Dev mode — skipping deep sleep. REPL active.")
 else:
-    btn_a.deinit()
-
     wifi.radio.enabled = False
     pixels.deinit()
 

@@ -82,7 +82,10 @@ btn = digitalio.DigitalInOut(board.D15)
 btn.direction = digitalio.Direction.INPUT
 btn.pull = digitalio.Pull.UP
 
-dev_mode = not btn.value  # Active low: pressed = False
+# Dev mode requires Button A held during a TRUE reset (power-on / reset button).
+# A deep-sleep wake triggered by pressing Button A would otherwise be
+# misinterpreted as "user wants dev mode" — skipping remount and deep-sleep.
+dev_mode = (not btn.value) and (alarm.wake_alarm is None)
 btn.deinit()
 
 if dev_mode:
