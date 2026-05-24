@@ -67,29 +67,16 @@ BODY_LEFT = 2
 BODY_RIGHT = display.width - 2
 BODY_WIDTH = BODY_RIGHT - BODY_LEFT
 
-# --- Persistent state ---
-DATA_PATH = "/data.json"
-
-def db_read():
-    try:
-        with open(DATA_PATH, "r") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {"last_seen_ts": "", "current_ts": ""}
-
-db_write_error = None  # populated if last db_write failed
-
-def db_write(data):
-    global db_write_error
-    try:
-        with open(DATA_PATH, "w") as f:
-            json.dump(data, f)
-        db_write_error = None
-        return True
-    except OSError as e:
-        db_write_error = str(e)
-        print(f"db_write failed: {e}")
-        return False
+# --- No persistent state ---
+# We deliberately keep zero device-side state between wakes. The server is the
+# source of truth for which messages are seen vs unseen. On every wake we just
+# fetch the unacked queue (oldest first) and render messages[0]. On Button B
+# we ack messages[0].ts and render messages[1] if present.
+#
+# This avoids ESP32-S2's quirk where storage.remount("/", readonly=False) only
+# takes effect on the first boot after a true power-on/reset — every
+# subsequent deep-sleep wake leaves the filesystem read-only, so any FS write
+# silently fails. Without FS writes that whole class of bug disappears.
 
 
 def get_wake_button():
@@ -249,27 +236,25 @@ print("Local now:", current_date_time)
 auth_headers = {"Authorization": f"Bearer {MSG_API_TOKEN}"} if MSG_API_TOKEN else {}
 
 
-def fetch_messages(since_ts):
+def fetch_messages():
+    """Returns (messages, server_now, fallback). messages is [] or [single message]."""
     if not MSG_API_URL:
-        return None, None
+        return None, None, False
     url = MSG_API_URL
     sep = "&" if "?" in url else "?"
-    if since_ts:
-        url = f"{url}{sep}since={since_ts}&limit=10"
-    else:
-        url = f"{url}{sep}limit=10"
+    url = f"{url}{sep}fallback=acked&limit=1"
     try:
         r = requests.get(url, headers=auth_headers)
         if r.status_code != 200:
             print(f"GET /messages: HTTP {r.status_code}")
             r.close()
-            return None, None
+            return None, None, False
         data = r.json()
         r.close()
-        return data.get("messages", []), data.get("now")
+        return data.get("messages", []), data.get("now"), bool(data.get("fallback", False))
     except Exception as e:
         print(f"GET /messages failed: {e}")
-        return None, None
+        return None, None, False
 
 
 def ack_messages(up_to_ts):
@@ -303,38 +288,26 @@ def ack_messages(up_to_ts):
         return ("err", 0)
 
 
-# --- State + button action ---
-state = db_read()
-last_seen_ts = state.get("last_seen_ts", "") or ""
-current_ts = state.get("current_ts", "") or ""
+# --- Stateless poll + optional ack ---
+ack_status = None  # None | (code, n)
 
-ack_status = None  # None | (code, n)  e.g. ('ok',1) ('noop',0) ('http404',0) ('err',0)
-
-if wake_button == "B":
-    if current_ts:
-        print(f"Acking up to {current_ts}")
-        result = ack_messages(current_ts)
-        ack_status = result
-        if result[0] == "ok":
-            last_seen_ts = current_ts
-            current_ts = ""
-            state["last_seen_ts"] = last_seen_ts
-            state["current_ts"] = current_ts
-            db_write(state)
-    else:
-        ack_status = ("noconfig", 0)
-
-# Always poll on every wake
-messages, server_now = fetch_messages(last_seen_ts)
+messages, server_now, is_fallback = fetch_messages()
 if messages is None:
     messages = []
 
 current_msg = messages[0] if messages else None
-new_current_ts = current_msg["ts"] if current_msg else ""
-if new_current_ts != current_ts:
-    current_ts = new_current_ts
-    state["current_ts"] = current_ts
-    db_write(state)
+
+# Button B = ack the message currently on screen, then re-fetch to advance.
+# Only ack if the shown message is actually unseen (don't re-ack a fallback).
+if wake_button == "B" and current_msg and not is_fallback:
+    ack_ts = current_msg.get("ts")
+    print(f"Acking up to {ack_ts}")
+    ack_status = ack_messages(ack_ts)
+    if ack_status[0] == "ok":
+        messages, server_now, is_fallback = fetch_messages()
+        if messages is None:
+            messages = []
+        current_msg = messages[0] if messages else None
 
 
 # --- Compute local-time offset for formatting message ts ---
@@ -388,40 +361,14 @@ content_group.append(label.Label(
 ))
 content_group.append(Line(0, STATUS_BAR_HEIGHT, display.width - 1, STATUS_BAR_HEIGHT, 0x000000))
 
-# Debug line (only shown when ack happened or persistence failed).
-debug_bits = []
-if ack_status is not None:
-    code, n = ack_status
-    debug_bits.append(f"Ack {code} n={n}")
-if db_write_error is not None:
-    debug_bits.append("WRITE-FAIL")
-debug_height = 0
-if debug_bits:
-    ls_tail = (last_seen_ts or "")[-8:] or "-"
-    ct_tail = (current_ts or "")[-8:] or "-"
-    debug_bits.append(f"ls={ls_tail} ct={ct_tail}")
-    content_group.append(label.Label(
-        terminalio.FONT,
-        text="  ".join(debug_bits),
-        color=0x000000,
-        anchor_point=(0.0, 0.0),
-        anchored_position=(2, STATUS_BAR_HEIGHT + 1),
-        scale=1,
-    ))
-    debug_height = 12  # shift body content down to avoid overlap
-
-# Shift the body region down by the debug-line height when present.
-header_y = CONTENT_TOP + debug_height
-body_top_eff = BODY_TOP + debug_height
-body_height_eff = BODY_HEIGHT - debug_height
-
 # Body: header line + dynamically-scaled message body, OR empty-state.
 if current_msg:
     sender = current_msg.get("from", "")
     when = format_msg_when(current_msg.get("ts", ""))
     body_text = current_msg.get("body", "")
 
-    header_text = f"from {sender} - {when}"
+    suffix = " (seen)" if is_fallback else ""
+    header_text = f"from {sender} - {when}{suffix}"
     # Truncate header if it overflows the screen width at scale=1.
     max_header_chars = display.width // 6
     if len(header_text) > max_header_chars:
@@ -432,14 +379,14 @@ if current_msg:
         text=header_text,
         color=0x000000,
         anchor_point=(0.0, 0.0),
-        anchored_position=(BODY_LEFT, header_y),
+        anchored_position=(BODY_LEFT, CONTENT_TOP),
         scale=1,
     ))
 
-    scale, lines = choose_scale(body_text, BODY_WIDTH, body_height_eff)
+    scale, lines = choose_scale(body_text, BODY_WIDTH, BODY_HEIGHT)
     glyph_h = 12 * scale
     block_h = len(lines) * glyph_h
-    start_y = body_top_eff + max(0, (body_height_eff - block_h) // 2)
+    start_y = BODY_TOP + max(0, (BODY_HEIGHT - block_h) // 2)
     for i, line in enumerate(lines):
         content_group.append(label.Label(
             terminalio.FONT,
@@ -450,15 +397,12 @@ if current_msg:
             scale=scale,
         ))
 else:
-    msg = "No new messages"
-    if ack_status is not None and ack_status[0] not in ("ok",):
-        msg = f"Ack: {ack_status[0]} (n={ack_status[1]})"
     content_group.append(label.Label(
         terminalio.FONT,
-        text=msg,
+        text="No messages",
         color=0x000000,
         anchor_point=(0.5, 0.5),
-        anchored_position=(display.width // 2, (body_top_eff + BODY_BOTTOM) // 2),
+        anchored_position=(display.width // 2, (BODY_TOP + BODY_BOTTOM) // 2),
         scale=2,
     ))
 
@@ -470,7 +414,7 @@ content_group.append(Line(0, BUTTON_LABEL_Y - BUTTON_LABEL_H - 2,
                           0x999999))
 for i, name in enumerate(btn_order):
     text = BUTTON_LABELS[name]
-    if name == "B" and not current_msg:
+    if name == "B" and (not current_msg or is_fallback):
         text = "-"  # nothing to ack
     content_group.append(label.Label(
         terminalio.FONT,
@@ -509,13 +453,13 @@ while display.busy:
 
 
 # --- Dev mode escape hatch ---
-# Only treat held Button D as "stay in REPL" on a true reset, not on a
-# deep-sleep wake. Using D rather than A since A may be physically unreliable.
-btn_d = digitalio.DigitalInOut(board.D11)
-btn_d.direction = digitalio.Direction.INPUT
-btn_d.pull = digitalio.Pull.UP
-dev_skip_sleep = (not btn_d.value) and (alarm.wake_alarm is None)
-btn_d.deinit()
+# Only treat held Button A as "stay in REPL" on a true reset, not on a
+# deep-sleep wake (otherwise pressing A to wake would always drop into REPL).
+btn_a = digitalio.DigitalInOut(board.D15)
+btn_a.direction = digitalio.Direction.INPUT
+btn_a.pull = digitalio.Pull.UP
+dev_skip_sleep = (not btn_a.value) and (alarm.wake_alarm is None)
+btn_a.deinit()
 if dev_skip_sleep:
     print("Dev mode — skipping deep sleep. REPL active.")
 else:

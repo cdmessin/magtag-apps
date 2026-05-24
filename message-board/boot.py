@@ -78,12 +78,12 @@ def ota_update():
     print("OTA: Done, code.py updated")
 
 
-btn = digitalio.DigitalInOut(board.D11)  # Button D — A may be unreliable on some units
+btn = digitalio.DigitalInOut(board.D15)
 btn.direction = digitalio.Direction.INPUT
 btn.pull = digitalio.Pull.UP
 
-# Dev mode requires Button D held during a TRUE reset (power-on / reset button).
-# A deep-sleep wake triggered by pressing a button would otherwise be
+# Dev mode requires Button A held during a TRUE reset (power-on / reset button).
+# A deep-sleep wake triggered by pressing Button A would otherwise be
 # misinterpreted as "user wants dev mode" — skipping remount and deep-sleep.
 dev_mode = (not btn.value) and (alarm.wake_alarm is None)
 btn.deinit()
